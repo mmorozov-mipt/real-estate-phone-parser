@@ -22,3 +22,11 @@ It automatically extracts contact phone numbers from simple landing pages and on
 ```bash
 pip install -r requirements.txt
 python parser.py
+
+## Example Use Case
+Used to collect contact phone numbers from real estate landing pages in order to build a structured database
+for further analysis and filtering of property offers.
+
+## Disclaimer
+This project is intended for educational and personal use only.
+
