@@ -4,20 +4,22 @@ Real Estate Phone Parser
 
 Этот скрипт умеет заходить на сайт по ссылке и искать на странице номера телефонов.
 
-Объяснение максимально простое:
+Теперь у него 2 режима работы:
 
-1. Ты даешь ссылку на сайт.
-2. Скрипт открывает страницу, как браузер.
-3. Он берет весь видимый текст со страницы.
-4. Он ищет в этом тексте всё, что похоже на номер телефона.
-5. Он приводит телефоны к аккуратному виду.
-6. Он убирает повторяющиеся номера.
-7. Он сохраняет их в файл phones.txt
-8. И показывает результат на экране.
+1) ОДИН САЙТ
+   python3 parser.py https://example.com/page
 
-Никакие базы данных не используются.
-Ничего “взламывать” он не пытается.
-Он просто читает открытые страницы и находит в тексте номера.
+   Скрипт обрабатывает одну страницу.
+
+2) СПИСОК ССЫЛОК ИЗ ФАЙЛА
+   python3 parser.py urls.txt
+
+   В файле urls.txt каждая строка – это отдельная ссылка.
+   Скрипт по очереди обходит все эти страницы и собирает телефоны со всех.
+
+Результат в обоих режимах:
+- телефоны сохраняются в файл phones.txt (по одному номеру на строку)
+- на экран выводится статистика
 """
 
 import sys
@@ -29,14 +31,8 @@ from bs4 import BeautifulSoup
 
 
 # ---------------------------------------------
-# ШАГ 1. правило для поиска телефонов
+# Правило для поиска телефонов
 # ---------------------------------------------
-# Мы говорим программе:
-# "ищи строки, похожие на телефон"
-# Пример того, что мы хотим находить:
-# +7 (999) 123-45-67
-# 8 912 333 22 11
-# +380-44-777-66-55
 PHONE_REGEX = re.compile(
     r"""
     (\+?\d[\d\-\s\(\)]{7,}\d)
@@ -51,10 +47,9 @@ PHONE_REGEX = re.compile(
 def fetch_html(url: str) -> str:
     """
     Загружает HTML код сайта по ссылке.
-    Если по-детски: "открывает страничку в интернете".
     """
 
-    # Притворяемся настоящим браузером — так сайты относятся дружелюбнее
+    # Притворяемся обычным браузером, сайты так реагируют спокойнее
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -63,25 +58,17 @@ def fetch_html(url: str) -> str:
         )
     }
 
-    # Делаем HTTP запрос
     response = requests.get(url, headers=headers, timeout=15)
-
-    # Если страница не открылась — будет ошибка
     response.raise_for_status()
-
     return response.text
 
 
 # ---------------------------------------------
-# Достаём текст со страницы
+# Достаём читаемый текст из HTML
 # ---------------------------------------------
 def extract_text(html: str) -> str:
     """
-    Из HTML удаляем все теги и оставляем только “живой” текст.
-
-    Например:
-    Было: <p>Позвоните нам +7 999 123 45 67</p>
-    Стало: Позвоните нам +7 999 123 45 67
+    Удаляем HTML теги и оставляем только видимый текст.
     """
 
     soup = BeautifulSoup(html, "html.parser")
@@ -90,9 +77,7 @@ def extract_text(html: str) -> str:
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
-    # Получаем текстовую версию страницы
     text = soup.get_text(separator=" ")
-
     # Убираем лишние пробелы
     return " ".join(text.split())
 
@@ -102,28 +87,25 @@ def extract_text(html: str) -> str:
 # ---------------------------------------------
 def find_raw_phones(text: str) -> List[str]:
     """
-    Находит телефоны по регулярному выражению.
-    Говоря по-простому: ищет в тексте всё, что похоже на номер.
+    Ищем всё, что похоже на телефон, по регулярному выражению.
     """
     return PHONE_REGEX.findall(text)
 
 
 # ---------------------------------------------
-# Делаем телефоны красивыми и одинаковыми
+# Нормализуем телефон (делаем аккуратным)
 # ---------------------------------------------
 def normalize_phone(raw: str) -> str:
     """
-    Приводим телефоны к аккуратному единому виду.
+    Приводим телефоны к единому виду.
 
-    Например:
+    Пример:
     "+7 (999) 123-45-67" -> "+79991234567"
     "8 912 333 22 11"   -> "89123332211"
     """
 
-    # Был ли плюс в начале
     has_plus = raw.strip().startswith("+")
-
-    # Убираем всё, кроме цифр
+    # оставляем только цифры
     digits = re.sub(r"\D", "", raw)
 
     if not digits:
@@ -136,7 +118,9 @@ def normalize_phone(raw: str) -> str:
 
 
 def normalize_phones(raw_phones: List[str]) -> Set[str]:
-    """Делаем номера чистыми и убираем повторы."""
+    """
+    Применяем нормализацию ко всем телефонам и убираем повторы.
+    """
     result: Set[str] = set()
     for raw in raw_phones:
         norm = normalize_phone(raw)
@@ -150,8 +134,7 @@ def normalize_phones(raw_phones: List[str]) -> Set[str]:
 # ---------------------------------------------
 def save_phones(phones: Set[str], path: str = "phones.txt") -> None:
     """
-    Сохраняет номера в файл.
-    В файле: по одному номеру в строке.
+    Сохраняет номера в файл, по одному номеру в строке.
     """
     with open(path, "w", encoding="utf-8") as f:
         for p in sorted(phones):
@@ -159,50 +142,92 @@ def save_phones(phones: Set[str], path: str = "phones.txt") -> None:
 
 
 # ---------------------------------------------
-# Главная функция программы
+# Работа с режимом "список ссылок"
 # ---------------------------------------------
-def main() -> None:
+def load_urls_from_file(path: str) -> List[str]:
     """
-    Это “вход в программу”.
-    То, что реально выполняется при запуске файла.
+    Читает файл со списком ссылок.
+    В файле:
+      - каждая строка это URL
+      - пустые строки и строки, начинающиеся с #, игнорируются
     """
+    urls: List[str] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                continue
+            urls.append(line)
+    return urls
 
-    # Пользователь должен передать ссылку
-    if len(sys.argv) < 2:
-        print("Как пользоваться:")
-        print("python3 parser.py https://example.com")
-        sys.exit(1)
 
-    url = sys.argv[1]
+def process_single_url(url: str) -> Set[str]:
+    """
+    Обрабатывает один URL и возвращает множество телефонов, найденных на этой странице.
+    """
     print(f"Открываю страницу: {url}")
 
-    # Пытаемся скачать страницу
     try:
         html = fetch_html(url)
     except Exception as e:
         print(f"Не смог открыть страницу. Ошибка: {e}")
+        return set()
+
+    text = extract_text(html)
+    raw_matches = find_raw_phones(text)
+    print(f"  Найдено совпадений (сырых): {len(raw_matches)}")
+    unique = normalize_phones(raw_matches)
+    print(f"  Уникальных телефонов после очистки: {len(unique)}")
+    return unique
+
+
+# ---------------------------------------------
+# Главная функция
+# ---------------------------------------------
+def main() -> None:
+    """
+    Определяет режим работы и запускает скрипт.
+    """
+
+    if len(sys.argv) < 2:
+        print("Как пользоваться:")
+        print("  Один сайт: python3 parser.py https://example.com/page")
+        print("  Список сайтов из файла: python3 parser.py urls.txt")
         sys.exit(1)
 
-    # Достаём текст
-    text = extract_text(html)
+    arg = sys.argv[1]
 
-    # Находим телефоны
-    raw_matches = find_raw_phones(text)
-    print(f"Найдено совпадений (сырых): {len(raw_matches)}")
+    # Если аргумент начинается с http:// или https:// – считаем, что это один URL
+    if arg.startswith("http://") or arg.startswith("https://"):
+        print("Режим: один сайт")
+        phones = process_single_url(arg)
+    else:
+        # Иначе считаем, что это путь к файлу со списком ссылок
+        print("Режим: список ссылок из файла")
+        print(f"Читаю ссылки из: {arg}")
+        try:
+            urls = load_urls_from_file(arg)
+        except Exception as e:
+            print(f"Не удалось прочитать файл с ссылками. Ошибка: {e}")
+            sys.exit(1)
 
-    # Нормализуем
-    unique = normalize_phones(raw_matches)
-    print(f"Уникальных телефонов после очистки: {len(unique)}")
+        print(f"Найдено ссылок: {len(urls)}")
+        phones: Set[str] = set()
+        for url in urls:
+            new_phones = process_single_url(url)
+            phones |= new_phones  # объединяем множества
 
-    # Если телефоны есть — сохраняем
-    if unique:
-        save_phones(unique, "phones.txt")
+    # Финальный результат
+    if phones:
+        save_phones(phones, "phones.txt")
+        print()
+        print(f"ИТОГО: уникальных телефонов со всех страниц: {len(phones)}")
         print("Телефоны сохранены в файл phones.txt")
     else:
         print("Телефонов не найдено.")
 
 
-# Этот кусок означает:
-# “Запусти main(), если файл запускают напрямую”
 if __name__ == "__main__":
     main()
