@@ -1,30 +1,208 @@
+"""
+Real Estate Phone Parser
+------------------------
+
+Этот скрипт умеет заходить на сайт по ссылке и искать на странице номера телефонов.
+
+Объяснение максимально простое:
+
+1. Ты даешь ссылку на сайт.
+2. Скрипт открывает страницу, как браузер.
+3. Он берет весь видимый текст со страницы.
+4. Он ищет в этом тексте всё, что похоже на номер телефона.
+5. Он приводит телефоны к аккуратному виду.
+6. Он убирает повторяющиеся номера.
+7. Он сохраняет их в файл phones.txt
+8. И показывает результат на экране.
+
+Никакие базы данных не используются.
+Ничего “взламывать” он не пытается.
+Он просто читает открытые страницы и находит в тексте номера.
+"""
+
+import sys
 import re
+from typing import List, Set
+
 import requests
 from bs4 import BeautifulSoup
 
-PHONE_REGEX = r'(\+?\d[\d\-\s\(\)]{7,}\d)'
 
-def parse_phones(url: str) -> list:
+# ---------------------------------------------
+# ШАГ 1. правило для поиска телефонов
+# ---------------------------------------------
+# Мы говорим программе:
+# "ищи строки, похожие на телефон"
+# Пример того, что мы хотим находить:
+# +7 (999) 123-45-67
+# 8 912 333 22 11
+# +380-44-777-66-55
+PHONE_REGEX = re.compile(
+    r"""
+    (\+?\d[\d\-\s\(\)]{7,}\d)
+    """,
+    re.VERBOSE,
+)
+
+
+# ---------------------------------------------
+# Скачиваем страницу по ссылке
+# ---------------------------------------------
+def fetch_html(url: str) -> str:
     """
-    Parse phone numbers from a one-page website
+    Загружает HTML код сайта по ссылке.
+    Если по-детски: "открывает страничку в интернете".
     """
-    response = requests.get(url, timeout=10)
+
+    # Притворяемся настоящим браузером — так сайты относятся дружелюбнее
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        )
+    }
+
+    # Делаем HTTP запрос
+    response = requests.get(url, headers=headers, timeout=15)
+
+    # Если страница не открылась — будет ошибка
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, 'html.parser')
-    text = soup.get_text(separator=' ')
-
-    phones = re.findall(PHONE_REGEX, text)
-    return list(set(phones))
+    return response.text
 
 
-if __name__ == "__main__":
-    test_url = input("Enter website URL: ")
-    phones = parse_phones(test_url)
+# ---------------------------------------------
+# Достаём текст со страницы
+# ---------------------------------------------
+def extract_text(html: str) -> str:
+    """
+    Из HTML удаляем все теги и оставляем только “живой” текст.
 
-    if phones:
-        print("Found phone numbers:")
-        for phone in phones:
-            print(phone)
+    Например:
+    Было: <p>Позвоните нам +7 999 123 45 67</p>
+    Стало: Позвоните нам +7 999 123 45 67
+    """
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Удаляем то, что пользователь не видит
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    # Получаем текстовую версию страницы
+    text = soup.get_text(separator=" ")
+
+    # Убираем лишние пробелы
+    return " ".join(text.split())
+
+
+# ---------------------------------------------
+# Ищем телефоны в тексте
+# ---------------------------------------------
+def find_raw_phones(text: str) -> List[str]:
+    """
+    Находит телефоны по регулярному выражению.
+    Говоря по-простому: ищет в тексте всё, что похоже на номер.
+    """
+    return PHONE_REGEX.findall(text)
+
+
+# ---------------------------------------------
+# Делаем телефоны красивыми и одинаковыми
+# ---------------------------------------------
+def normalize_phone(raw: str) -> str:
+    """
+    Приводим телефоны к аккуратному единому виду.
+
+    Например:
+    "+7 (999) 123-45-67" -> "+79991234567"
+    "8 912 333 22 11"   -> "89123332211"
+    """
+
+    # Был ли плюс в начале
+    has_plus = raw.strip().startswith("+")
+
+    # Убираем всё, кроме цифр
+    digits = re.sub(r"\D", "", raw)
+
+    if not digits:
+        return ""
+
+    if has_plus:
+        return "+" + digits
+
+    return digits
+
+
+def normalize_phones(raw_phones: List[str]) -> Set[str]:
+    """Делаем номера чистыми и убираем повторы."""
+    result: Set[str] = set()
+    for raw in raw_phones:
+        norm = normalize_phone(raw)
+        if norm:
+            result.add(norm)
+    return result
+
+
+# ---------------------------------------------
+# Сохраняем телефоны в файл
+# ---------------------------------------------
+def save_phones(phones: Set[str], path: str = "phones.txt") -> None:
+    """
+    Сохраняет номера в файл.
+    В файле: по одному номеру в строке.
+    """
+    with open(path, "w", encoding="utf-8") as f:
+        for p in sorted(phones):
+            f.write(p + "\n")
+
+
+# ---------------------------------------------
+# Главная функция программы
+# ---------------------------------------------
+def main() -> None:
+    """
+    Это “вход в программу”.
+    То, что реально выполняется при запуске файла.
+    """
+
+    # Пользователь должен передать ссылку
+    if len(sys.argv) < 2:
+        print("Как пользоваться:")
+        print("python3 parser.py https://example.com")
+        sys.exit(1)
+
+    url = sys.argv[1]
+    print(f"Открываю страницу: {url}")
+
+    # Пытаемся скачать страницу
+    try:
+        html = fetch_html(url)
+    except Exception as e:
+        print(f"Не смог открыть страницу. Ошибка: {e}")
+        sys.exit(1)
+
+    # Достаём текст
+    text = extract_text(html)
+
+    # Находим телефоны
+    raw_matches = find_raw_phones(text)
+    print(f"Найдено совпадений (сырых): {len(raw_matches)}")
+
+    # Нормализуем
+    unique = normalize_phones(raw_matches)
+    print(f"Уникальных телефонов после очистки: {len(unique)}")
+
+    # Если телефоны есть — сохраняем
+    if unique:
+        save_phones(unique, "phones.txt")
+        print("Телефоны сохранены в файл phones.txt")
     else:
-        print("No phone numbers found.")
+        print("Телефонов не найдено.")
+
+
+# Этот кусок означает:
+# “Запусти main(), если файл запускают напрямую”
+if __name__ == "__main__":
+    main()
