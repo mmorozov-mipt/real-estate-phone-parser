@@ -1,32 +1,48 @@
 # Real Estate Phone Parser
 
-Python tool for parsing phone numbers from one-page real estate websites.
+A simple Python-based parser that collects phone numbers from real estate listings.  
+Project created for educational purposes (web scraping basics, HTTP requests handling, data parsing).
 
-## Project Goal
-This project was developed as part of a personal application for selecting and analyzing real estate offers.
-It automatically extracts contact phone numbers from simple landing pages and one-page websites.
+## Features
+
+- collects phone numbers from listing pages
+- handles pagination
+- saves results to CSV file
+- basic error handling and logging
 
 ## Technologies
+
 - Python 3
 - requests
-- BeautifulSoup
-- Regular Expressions
+- BeautifulSoup4
+- CSV
 
-## How it works
-1. Downloads HTML content of a webpage
-2. Extracts visible text
-3. Finds phone numbers using regex patterns
-4. Removes duplicates
+## How to run
 
-## Usage
-```bash
-pip install -r requirements.txt
-python parser.py
+1. Install dependencies:
 
-## Example Use Case
-Used to collect contact phone numbers from real estate landing pages in order to build a structured database
-for further analysis and filtering of property offers.
+pip install requests beautifulsoup4
+
+2. Run parser:
+
+python3 parser.py
+
+## Output
+
+The script creates a file:
+
+phones.csv
+
+It contains extracted phone numbers, one per line.
+
+## Example use case
+
+- collecting anonymized public phone numbers from ads
+- studying structure of HTML pages
+- learning basics of web scraping
+- demonstration project for GitHub portfolio
 
 ## Disclaimer
-This project is intended for educational and personal use only.
 
+This project is intended for educational purposes only.  
+Please respect website Terms of Service and local laws when scraping.
